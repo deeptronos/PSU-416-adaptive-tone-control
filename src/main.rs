@@ -8,6 +8,8 @@ const spec: hound::WavSpec = hound::WavSpec {
     sample_format: hound::SampleFormat::Int,
 };
 
+fn play_sample() {}
+
 fn main() {
     // generate 16 samples of a sine wave at frequency 3
     let sample_count = 16;
