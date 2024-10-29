@@ -18,6 +18,6 @@ fn main() {
     spectrum[0].im = 0.0;
 
     // the spectrum has a spike at index `signal_freq`
-    let amplitudes: Vec<_> = spectrum.iter().map(|c| c.norm() as u32).collect();
+    let amplitudes: Vec<_> = spectrum.iter().map(|c| c.norm() as u32).collect(); // microfft "std" feature required for c.norm().
     assert_eq!(&amplitudes, &[0, 0, 0, 8, 0, 0, 0, 0]);
 }
