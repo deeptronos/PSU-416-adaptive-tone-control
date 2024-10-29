@@ -6,6 +6,7 @@ version = 3
 name = "adaptive-tone-control"
 version = "0.1.0"
 dependencies = [
+ "hound",
  "microfft",
  "rbj_eq",
  "rodio",

@@ -1,6 +1,13 @@
 use std::convert::TryInto;
 use std::f32::consts::PI;
 
+const spec: hound::WavSpec = hound::WavSpec {
+    channels: 1,
+    sample_rate: 48000,
+    bits_per_sample: 16,
+    sample_format: hound::SampleFormat::Int,
+};
+
 fn main() {
     // generate 16 samples of a sine wave at frequency 3
     let sample_count = 16;

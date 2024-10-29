@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+hound = "3.5.1"
 microfft = { version = "0.6.0", features = ["std"] }
 rbj_eq = { git = "https://github.com/BartMassey/rbj-eq.git" }
 rodio = "0.19.0"
