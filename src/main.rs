@@ -1,5 +1,15 @@
 use std::convert::TryInto;
 use std::f32::consts::PI;
+use std::path::PathBuf;
+
+use clap::{Parser, Subcommand};
+
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
+struct Cli {
+    #[arg(short, long, value_name = "FILE")]
+    audio_file: Option<PathBuf>,
+}
 
 const spec: hound::WavSpec = hound::WavSpec {
     channels: 1,
@@ -11,6 +21,12 @@ const spec: hound::WavSpec = hound::WavSpec {
 fn play_sample() {}
 
 fn main() {
+    let cli = Cli::parse();
+
+    if let Some(audio_file) = cli.audio_file.as_deref() {
+        println!("Parsed audio file: {}", audio_file.display());
+    }
+
     // generate 16 samples of a sine wave at frequency 3
     let sample_count = 16;
     let signal_freq = 3.;
