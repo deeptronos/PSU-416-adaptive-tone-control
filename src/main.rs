@@ -1,8 +1,11 @@
+use clap::{Error, Parser, Subcommand};
+use rodio::{source::Source, Decoder, OutputStream};
 use std::convert::TryInto;
 use std::f32::consts::PI;
+use std::fs::File;
+use std::io::BufReader;
 use std::path::PathBuf;
-
-use clap::{Parser, Subcommand};
+use std::process::ExitCode;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -20,12 +23,20 @@ const spec: hound::WavSpec = hound::WavSpec {
 
 fn play_sample() {}
 
-fn main() {
+fn main() -> ExitCode {
     let cli = Cli::parse();
 
-    if let Some(audio_file) = cli.audio_file.as_deref() {
-        println!("Parsed audio file: {}", audio_file.display());
-    }
+    let audio_file = cli.audio_file.as_deref().unwrap();
+
+    // if let Some(audio_file) = cli.audio_file.as_deref() {
+    //     println!("Parsed audio file: {}", audio_file.display());
+    // }
+
+    let (_stream, stream_handle) = OutputStream::try_default().unwrap(); // Output stream handle
+    let file = BufReader::new(File::open(audio_file).unwrap());
+    let source = Decoder::new(file).unwrap();
+    stream_handle.play_raw(source.convert_samples());
+    std::thread::sleep(std::time::Duration::from_secs(5));
 
     // generate 16 samples of a sine wave at frequency 3
     let sample_count = 16;
@@ -45,4 +56,5 @@ fn main() {
     // the spectrum has a spike at index `signal_freq`
     let amplitudes: Vec<_> = spectrum.iter().map(|c| c.norm() as u32).collect(); // microfft "std" feature required for c.norm().
     assert_eq!(&amplitudes, &[0, 0, 0, 8, 0, 0, 0, 0]);
+    ExitCode::SUCCESS
 }
