@@ -5,6 +5,17 @@ We're getting an FFT from crates.io's [`microfft`](https://docs.rs/microfft/0.6.
 
 We're getting filters from [`github.com/BartMassey/rbj-eq`](github.com/BartMassey/rbj-eq)
 
+Build with `cargo build`. Run using
+```sh
+cargo run -- -a <path to WAV file>
+```
+or
+```sh
+cargo run -- --help
+```
+for a list of options.
+
+
 ## Assignment
 Let's arbitrarily divide audio frequencies into "low" band 0-300Hz, "mid" band 300-2000Hz, and "high" band  2000+ Hz. As demonstrated in class, a "tone control" allows adjusting the volume of the sound in each frequency band separately.
 
