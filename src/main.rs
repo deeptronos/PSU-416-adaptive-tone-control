@@ -47,30 +47,16 @@ fn read_wave(filename: PathBuf) -> (Vec<Complex32>, usize) {
 fn process_wave(mut signal: Vec<Complex32>, n_samples: usize) -> Option<f32> {
     println!("n_samples: {}", n_samples);
 
-    // Ok(())
-    // let padded_n = (n_samples + (16 - (n_samples % 16))); // TODO vary from 32 for other-sized CFFT
-    // let padded_signal: Vec<Complex32> = signal.resize(padded_n, Complex32::new(0f32, 0f32));
-    //
     let padded_n = SIZE;
 
-    // let mut closest_power = padded_n; // Bit twiddling...
-    // closest_power -= 1;
-    // closest_power |= closest_power >> 1;
-    // closest_power |= closest_power >> 2;
-    // closest_power |= closest_power >> 4;
-    // closest_power |= closest_power >> 8;
-    // closest_power |= closest_power >> 16;
-    // closest_power += 1;
-
     println!("padded n: {}", padded_n);
-    // println!("closest_power: {}", closest_power);
     signal.resize(padded_n, Complex32::new(0f32, 0f32));
     let mut samples: [_; SIZE] = signal.try_into().unwrap(); // TODO pad samples to be sized to an even multiple of 32! and DM BART!!
                                                              // .unwrap_or(panic!("Unable to put signal into CFFT32 format samples"));
 
     let spectrum = microfft::complex::cfft_32768(&mut samples);
 
-    // println!("Spectrum: {:?}", spectrum);
+    println!("Spectrum: {:?}", spectrum);
     Some(0f32)
 }
 fn playback(audio_file: &Path) {
