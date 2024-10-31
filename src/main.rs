@@ -54,9 +54,9 @@ fn process_wave(mut signal: Vec<Complex32>, n_samples: usize) -> Option<f32> {
     let mut samples: [_; SIZE] = signal.try_into().unwrap(); // TODO pad samples to be sized to an even multiple of 32! and DM BART!!
                                                              // .unwrap_or(panic!("Unable to put signal into CFFT32 format samples"));
 
-    let spectrum = microfft::complex::cfft_32768(&mut samples);
+    let spectrum = microfft::complex::cfft_32768(&mut samples); // TODO why do large (>32768) samples NOT cause unwrap to fail...
 
-    println!("Spectrum: {:?}", spectrum);
+    // println!("Spectrum: {:?}", spectrum);
     Some(0f32)
 }
 fn playback(audio_file: &Path) {
