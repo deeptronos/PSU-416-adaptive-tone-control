@@ -1,12 +1,10 @@
 use clap::{Error, Parser, Subcommand};
 use hound;
 use microfft::{complex::cfft_32, Complex32};
-use num::complex::Complex;
-use rodio::{source::Source, Decoder, OutputStream};
+
 use std::convert::TryInto;
 use std::f32::consts::PI;
-use std::fs::File;
-use std::io::BufReader;
+
 use std::path::PathBuf;
 use std::process::ExitCode;
 

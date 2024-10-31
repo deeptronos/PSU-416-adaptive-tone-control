@@ -7,6 +7,4 @@ edition = "2021"
 clap = { version = "4.5.20", features = ["derive"] }
 hound = "3.5.1"
 microfft = { version = "0.6.0", features = ["std"] }
-num = "0.4.3"
 rbj_eq = { git = "https://github.com/BartMassey/rbj-eq.git" }
-rodio = "0.19.0"
