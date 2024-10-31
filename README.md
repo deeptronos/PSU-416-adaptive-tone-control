@@ -5,6 +5,7 @@ We're getting an FFT from crates.io's [`microfft`](https://docs.rs/microfft/0.6.
 
 We're getting filters from [`github.com/BartMassey/rbj-eq`](github.com/BartMassey/rbj-eq)
 
+## Use the Code
 Build with `cargo build`. Run using
 ```sh
 cargo run -- -a <path to WAV file>
