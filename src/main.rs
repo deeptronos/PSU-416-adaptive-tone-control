@@ -5,6 +5,8 @@ use microfft::{complex::cfft_16, Complex32};
 use rodio::cpal;
 use rodio::cpal::traits::{DeviceTrait, HostTrait};
 use rodio::{source::Source, Decoder, OutputStream};
+use std::cell::RefCell;
+use std::cmp::max;
 use std::convert::TryInto;
 use std::f32::consts::PI;
 use std::fs::File;
@@ -14,11 +16,11 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use audio_visualizer::dynamic::live_input::AudioDevAndCfg;
+use audio_visualizer::dynamic::live_input::{list_input_devs, AudioDevAndCfg};
 use audio_visualizer::dynamic::window_top_btm::{open_window_connect_audio, TransformFn};
-use spectrum_analyzer::scaling::divide_by_N_sqrt;
+use spectrum_analyzer::scaling::divide_by_N;
 use spectrum_analyzer::windows::hann_window;
-use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit};
+use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit, FrequencyValue};
 
 use rodio::*;
 
@@ -45,7 +47,9 @@ const spec: hound::WavSpec = hound::WavSpec {
     sample_format: hound::SampleFormat::Int,
 };
 
-fn list_host_devices() {
+///
+/// Returns: a cpal::Device for the Default output device.
+fn list_host_output_devices() -> cpal::Device {
     let host = cpal::default_host();
     let devices = host.output_devices().unwrap();
     for device in devices {
@@ -61,7 +65,9 @@ fn list_host_devices() {
             .unwrap()
             .name()
             .unwrap()
-    )
+    );
+
+    cpal::default_host().default_output_device().unwrap()
 }
 
 fn get_output_stream(device_name: &str) -> (OutputStream, OutputStreamHandle) {
@@ -70,13 +76,97 @@ fn get_output_stream(device_name: &str) -> (OutputStream, OutputStreamHandle) {
     let (mut _stream, mut stream_handle) = OutputStream::try_default().unwrap();
     for device in devices {
         let dev: rodio::Device = device.into();
-        let devName: String = dev.name().unwrap();
-        if devName == device_name {
-            println!("Device found: {}", devName);
+        let dev_name: String = dev.name().unwrap();
+        if dev_name == device_name {
+            println!("Device found: {}", dev_name);
             (_stream, stream_handle) = OutputStream::try_from_device(&dev).unwrap();
         }
     }
     return (_stream, stream_handle);
+}
+
+// fn enumerate_output_devices() -> Vec<(String, cpal::Device)>{
+//     list cpal::default_host().default_output_device().unwrap();
+//     let name = device.name().unwrap();
+// }
+
+fn visualize_audio_device() {
+    // Contains the data for the spectrum to be visualized. It contains ordered pairs of
+    // `(frequency, frequency_value)`. During each iteration, the frequency value gets
+    // combined with `max(old_value * smoothing_factor, new_value)`.
+    let visualize_spectrum: RefCell<Vec<(f64, f64)>> = RefCell::new(vec![(0.0, 0.0); 1024]);
+
+    let device: Option<Device> = Some(list_host_output_devices()); // Get the default output device.
+    println!(
+        "device: {}",
+        device
+            .as_ref()
+            .expect("Unable to get device.")
+            .name()
+            .unwrap()
+    );
+
+    let closure = |i: rodio::cpal::DefaultStreamConfigError| -> SupportedStreamConfig {
+        println!("Error: {}", i);
+        panic!("Closure failed")
+    };
+
+    let cfg = AudioDevAndCfg::new(
+        Some(device.clone().unwrap()),
+        Some(match device {
+            Some(dev) => dev.default_output_config().unwrap_or_else(closure).into(),
+            None => panic!("Failed to get device for cfg"),
+        }),
+    );
+
+    // Closure that captures `visualize_spectrum`.
+    let to_spectrum_fn = move |audio: &[f32], sampling_rate| {
+        let skip_elements = audio.len() - 2048;
+        // spectrum analysis only of the latest 46ms
+        let relevant_samples = &audio[skip_elements..skip_elements + 2048];
+
+        // do FFT
+        let hann_window = hann_window(relevant_samples);
+        let latest_spectrum = samples_fft_to_spectrum(
+            &hann_window,
+            sampling_rate as u32,
+            FrequencyLimit::All,
+            Some(&divide_by_N),
+        )
+        .unwrap();
+
+        // now smoothen the spectrum; old values are decreased a bit and replaced,
+        // if the new value is higher
+        latest_spectrum
+            .data()
+            .iter()
+            .zip(visualize_spectrum.borrow_mut().iter_mut())
+            .for_each(|((fr_new, fr_val_new), (fr_old, fr_val_old))| {
+                // actually only required in very first iteration
+                *fr_old = fr_new.val() as f64;
+                let old_val = *fr_val_old * 0.84;
+                let max = max(
+                    *fr_val_new * 5000.0_f32.into(),
+                    FrequencyValue::from(old_val as f32),
+                );
+                *fr_val_old = max.val() as f64;
+            });
+
+        visualize_spectrum.borrow().clone()
+    };
+
+    let tsf = TransformFn::Complex(&to_spectrum_fn);
+    open_window_connect_audio(
+        "Live Spectrum View",
+        None,
+        None,
+        Some(0.0..22050.0),
+        Some(0.0..500.0),
+        "x_axis",
+        "y_axis",
+        cfg,
+        tsf,
+    )
 }
 
 fn read_wave(filename: PathBuf) -> (Vec<Complex32>, usize) {
@@ -116,11 +206,12 @@ fn playback(audio_file: &Path) {
 }
 
 fn main() -> ExitCode {
-    list_host_devices();
+    list_host_output_devices();
+
+    // Acquire handles on default output stream
     let device: rodio::Device = cpal::default_host().default_output_device().unwrap();
     let name = device.name().unwrap();
-    let (_stream, stream_handle) = get_output_stream(&name); // Acquire handles on default output stream
-    return ExitCode::SUCCESS;
+    let (_stream, stream_handle) = get_output_stream(&name);
 
     // Parse path to WAV file from CLI
     let cli = Cli::parse();
@@ -130,9 +221,13 @@ fn main() -> ExitCode {
         None => panic!("Error: Nothing to parse."),
         Some(f) => f,
     };
+
+    let viz = visualize_audio_device();
     if cli.playback {
         playback(audio_file);
     }
+
+    return ExitCode::SUCCESS;
 
     let buf = audio_file.to_path_buf();
 
