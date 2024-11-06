@@ -90,11 +90,6 @@ fn get_output_stream(device_name: &str) -> (OutputStream, OutputStreamHandle) {
     return (_stream, stream_handle);
 }
 
-// fn enumerate_output_devices() -> Vec<(String, cpal::Device)>{
-//     list cpal::default_host().default_output_device().unwrap();
-//     let name = device.name().unwrap();
-// }
-
 async fn visualize_audio_device() {
     // Contains the data for the spectrum to be visualized. It contains ordered pairs of
     // `(frequency, frequency_value)`. During each iteration, the frequency value gets
@@ -225,14 +220,6 @@ async fn main() -> ExitCode {
 
     // Parse path to WAV file from CLI
     let cli: Cli = Cli::parse();
-    // let file: Option<PathBuf> = cli.audio_file.clone();
-
-    // let audio_file: &Path = match cli.audio_file {
-    //     None => panic!("Error: Nothing to parse."),
-    //     Some(f) => f.as_ref(),
-    // };
-
-    // let viz = visualize_audio_device().await;
 
     if cli.playback {
         let audio_file: PathBuf = cli.audio_file.unwrap();
@@ -242,11 +229,6 @@ async fn main() -> ExitCode {
         tokio::spawn(async move { playback(audio_file.clone().as_ref()).await });
         let spectrum = process_wave(signal, n_samples);
     }
-
-    // return ExitCode::SUCCESS;
-
-    // let samples = s.0;
-    // const n_samples = s.1;
 
     println!("CTEST");
     // process_wave(read_wave(buf));
