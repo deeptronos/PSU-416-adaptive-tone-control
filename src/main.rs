@@ -1,6 +1,9 @@
 use clap::{Error, Parser, Subcommand};
 use hound;
 use microfft::{complex::cfft_16, Complex32};
+// use rodio::cpal::traits::{HostTrait,DeviceTrait};
+use rodio::cpal;
+use rodio::cpal::traits::{DeviceTrait, HostTrait};
 use rodio::{source::Source, Decoder, OutputStream};
 use std::convert::TryInto;
 use std::f32::consts::PI;
@@ -10,6 +13,14 @@ use std::path::Path;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
+
+use audio_visualizer::dynamic::live_input::AudioDevAndCfg;
+use audio_visualizer::dynamic::window_top_btm::{open_window_connect_audio, TransformFn};
+use spectrum_analyzer::scaling::divide_by_N_sqrt;
+use spectrum_analyzer::windows::hann_window;
+use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit};
+
+use rodio::*;
 
 // TODO good types?
 const LOW: i16 = 0;
@@ -33,6 +44,40 @@ const spec: hound::WavSpec = hound::WavSpec {
     bits_per_sample: 16,
     sample_format: hound::SampleFormat::Int,
 };
+
+fn list_host_devices() {
+    let host = cpal::default_host();
+    let devices = host.output_devices().unwrap();
+    for device in devices {
+        let dev: rodio::Device = device.into();
+        let dev_name: String = dev.name().unwrap();
+        println!("# Device: {}", dev_name);
+    }
+    println!("---");
+    println!(
+        "# Default output device: {}",
+        cpal::default_host()
+            .default_output_device()
+            .unwrap()
+            .name()
+            .unwrap()
+    )
+}
+
+fn get_output_stream(device_name: &str) -> (OutputStream, OutputStreamHandle) {
+    let host = cpal::default_host();
+    let devices = host.output_devices().unwrap();
+    let (mut _stream, mut stream_handle) = OutputStream::try_default().unwrap();
+    for device in devices {
+        let dev: rodio::Device = device.into();
+        let devName: String = dev.name().unwrap();
+        if devName == device_name {
+            println!("Device found: {}", devName);
+            (_stream, stream_handle) = OutputStream::try_from_device(&dev).unwrap();
+        }
+    }
+    return (_stream, stream_handle);
+}
 
 fn read_wave(filename: PathBuf) -> (Vec<Complex32>, usize) {
     let mut reader = hound::WavReader::open(filename).unwrap();
@@ -59,28 +104,37 @@ fn process_wave(mut signal: Vec<Complex32>, n_samples: usize) -> Option<f32> {
     // println!("Spectrum: {:?}", spectrum);
     Some(0f32)
 }
+
 fn playback(audio_file: &Path) {
     let (_stream, stream_handle) = OutputStream::try_default().unwrap(); // Output stream handle
+                                                                         // OutputStream::x
     let file = BufReader::new(File::open(audio_file).unwrap());
     let source = Decoder::new(file).unwrap();
     stream_handle.play_raw(source.convert_samples());
+
     std::thread::sleep(std::time::Duration::from_secs(5));
 }
 
 fn main() -> ExitCode {
+    list_host_devices();
+    let device: rodio::Device = cpal::default_host().default_output_device().unwrap();
+    let name = device.name().unwrap();
+    let (_stream, stream_handle) = get_output_stream(&name); // Acquire handles on default output stream
+    return ExitCode::SUCCESS;
+
     // Parse path to WAV file from CLI
     let cli = Cli::parse();
+    let file: Option<PathBuf> = cli.audio_file;
 
-    let audio_file = cli.audio_file.as_deref().unwrap();
-
+    let audio_file: &Path = match file.as_deref() {
+        None => panic!("Error: Nothing to parse."),
+        Some(f) => f,
+    };
     if cli.playback {
         playback(audio_file);
     }
 
     let buf = audio_file.to_path_buf();
-    if let Some(audio_file) = cli.audio_file.as_deref() {
-        println!("Parsed audio file: {}", audio_file.display());
-    }
 
     let (signal, n_samples) = read_wave(buf); // Read WAV file to (Vector of audio signal, Length of audio signal)
 
