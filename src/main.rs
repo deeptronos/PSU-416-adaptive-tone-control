@@ -10,7 +10,9 @@ use std::cmp::max;
 use std::convert::TryInto;
 use std::f32::consts::PI;
 use std::fs::File;
+use std::io;
 use std::io::BufReader;
+use std::ops::Deref;
 use std::path::Path;
 
 use std::path::PathBuf;
@@ -23,6 +25,9 @@ use spectrum_analyzer::windows::hann_window;
 use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit, FrequencyValue};
 
 use rodio::*;
+
+use tokio::sync::watch;
+use tokio::time::{self, Duration, Instant};
 
 // TODO good types?
 const LOW: i16 = 0;
@@ -90,7 +95,7 @@ fn get_output_stream(device_name: &str) -> (OutputStream, OutputStreamHandle) {
 //     let name = device.name().unwrap();
 // }
 
-fn visualize_audio_device() {
+async fn visualize_audio_device() {
     // Contains the data for the spectrum to be visualized. It contains ordered pairs of
     // `(frequency, frequency_value)`. During each iteration, the frequency value gets
     // combined with `max(old_value * smoothing_factor, new_value)`.
@@ -195,17 +200,22 @@ fn process_wave(mut signal: Vec<Complex32>, n_samples: usize) -> Option<f32> {
     Some(0f32)
 }
 
-fn playback(audio_file: &Path) {
+async fn playback(audio_file: &Path) {
     let (_stream, stream_handle) = OutputStream::try_default().unwrap(); // Output stream handle
                                                                          // OutputStream::x
     let file = BufReader::new(File::open(audio_file).unwrap());
     let source = Decoder::new(file).unwrap();
-    stream_handle.play_raw(source.convert_samples());
+    stream_handle
+        .play_raw(source.convert_samples())
+        .expect("Unable to play_raw");
 
     std::thread::sleep(std::time::Duration::from_secs(5));
 }
+#[tokio::main]
+async fn main() -> ExitCode {
+    // (tx, rx) = watch::channel(config.clone());
+    let viz = tokio::spawn(async move { visualize_audio_device().await });
 
-fn main() -> ExitCode {
     list_host_output_devices();
 
     // Acquire handles on default output stream
@@ -214,28 +224,30 @@ fn main() -> ExitCode {
     let (_stream, stream_handle) = get_output_stream(&name);
 
     // Parse path to WAV file from CLI
-    let cli = Cli::parse();
-    let file: Option<PathBuf> = cli.audio_file;
+    let cli: Cli = Cli::parse();
+    // let file: Option<PathBuf> = cli.audio_file.clone();
 
-    let audio_file: &Path = match file.as_deref() {
-        None => panic!("Error: Nothing to parse."),
-        Some(f) => f,
-    };
+    // let audio_file: &Path = match cli.audio_file {
+    //     None => panic!("Error: Nothing to parse."),
+    //     Some(f) => f.as_ref(),
+    // };
 
-    let viz = visualize_audio_device();
+    // let viz = visualize_audio_device().await;
+
     if cli.playback {
-        playback(audio_file);
+        let audio_file: PathBuf = cli.audio_file.unwrap();
+        let buf = audio_file.to_path_buf();
+        let (signal, n_samples) = read_wave(buf); // Read WAV file to (Vector of audio signal, Length of audio signal)
+
+        tokio::spawn(async move { playback(audio_file.clone().as_ref()).await });
+        let spectrum = process_wave(signal, n_samples);
     }
 
-    return ExitCode::SUCCESS;
-
-    let buf = audio_file.to_path_buf();
-
-    let (signal, n_samples) = read_wave(buf); // Read WAV file to (Vector of audio signal, Length of audio signal)
+    // return ExitCode::SUCCESS;
 
     // let samples = s.0;
     // const n_samples = s.1;
-    let spectrum = process_wave(signal, n_samples);
+
     println!("CTEST");
     // process_wave(read_wave(buf));
 
