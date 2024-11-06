@@ -1,6 +1,5 @@
-use clap::{Error, Parser, Subcommand};
-use hound;
-use microfft::{complex::cfft_16, Complex32};
+use clap::Parser;
+use microfft::Complex32;
 // use rodio::cpal::traits::{HostTrait,DeviceTrait};
 use rodio::cpal;
 use rodio::cpal::traits::{DeviceTrait, HostTrait};
@@ -8,26 +7,20 @@ use rodio::{source::Source, Decoder, OutputStream};
 use std::cell::RefCell;
 use std::cmp::max;
 use std::convert::TryInto;
-use std::f32::consts::PI;
 use std::fs::File;
-use std::io;
 use std::io::BufReader;
-use std::ops::Deref;
 use std::path::Path;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use audio_visualizer::dynamic::live_input::{list_input_devs, AudioDevAndCfg};
+use audio_visualizer::dynamic::live_input::AudioDevAndCfg;
 use audio_visualizer::dynamic::window_top_btm::{open_window_connect_audio, TransformFn};
 use spectrum_analyzer::scaling::divide_by_N;
 use spectrum_analyzer::windows::hann_window;
 use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit, FrequencyValue};
 
 use rodio::*;
-
-use tokio::sync::watch;
-use tokio::time::{self, Duration, Instant};
 
 // TODO good types?
 const LOW: i16 = 0;
@@ -45,7 +38,7 @@ struct Cli {
     playback: bool,
 }
 
-const spec: hound::WavSpec = hound::WavSpec {
+const SPEC: hound::WavSpec = hound::WavSpec {
     channels: 1,
     sample_rate: 48000,
     bits_per_sample: 16,
@@ -53,12 +46,12 @@ const spec: hound::WavSpec = hound::WavSpec {
 };
 
 ///
-/// Returns: a cpal::Device for the Default output device.
+/// **Returns**:  a cpal::Device for the Default output device.
 fn list_host_output_devices() -> cpal::Device {
     let host = cpal::default_host();
     let devices = host.output_devices().unwrap();
     for device in devices {
-        let dev: rodio::Device = device.into();
+        let dev: rodio::Device = device;
         let dev_name: String = dev.name().unwrap();
         println!("# Device: {}", dev_name);
     }
@@ -80,21 +73,21 @@ fn get_output_stream(device_name: &str) -> (OutputStream, OutputStreamHandle) {
     let devices = host.output_devices().unwrap();
     let (mut _stream, mut stream_handle) = OutputStream::try_default().unwrap();
     for device in devices {
-        let dev: rodio::Device = device.into();
+        let dev: rodio::Device = device;
         let dev_name: String = dev.name().unwrap();
         if dev_name == device_name {
             println!("Device found: {}", dev_name);
             (_stream, stream_handle) = OutputStream::try_from_device(&dev).unwrap();
         }
     }
-    return (_stream, stream_handle);
+    (_stream, stream_handle)
 }
 
 async fn visualize_audio_device() {
     // Contains the data for the spectrum to be visualized. It contains ordered pairs of
     // `(frequency, frequency_value)`. During each iteration, the frequency value gets
     // combined with `max(old_value * smoothing_factor, new_value)`.
-    let visualize_spectrum: RefCell<Vec<(f64, f64)>> = RefCell::new(vec![(0.0, 0.0); 1024]);
+    let visualize_spectrum: RefCell<Vec<(f64, f64)>> = RefCell::new(vec![(0.0, 0.0); 64]);
 
     let device: Option<Device> = Some(list_host_output_devices()); // Get the default output device.
     println!(
@@ -196,6 +189,7 @@ fn process_wave(mut signal: Vec<Complex32>, n_samples: usize) -> Option<f32> {
 }
 
 async fn playback(audio_file: &Path) {
+    std::thread::sleep(std::time::Duration::from_secs(5));
     let (_stream, stream_handle) = OutputStream::try_default().unwrap(); // Output stream handle
                                                                          // OutputStream::x
     let file = BufReader::new(File::open(audio_file).unwrap());
@@ -206,10 +200,24 @@ async fn playback(audio_file: &Path) {
 
     std::thread::sleep(std::time::Duration::from_secs(5));
 }
+
+async fn run_playback_and_vis(audio_file: &Path) {
+    tokio::select! {
+        _ = async {playback(audio_file).await}=> {
+            println!("Playback finished");
+        }
+
+        _ =  {visualize_audio_device()} => {
+            println!("Visualization finished");
+        }
+
+    }
+}
 #[tokio::main]
 async fn main() -> ExitCode {
     // (tx, rx) = watch::channel(config.clone());
-    let viz = tokio::spawn(async move { visualize_audio_device().await });
+
+    // let viz = tokio::spawn(async move { visualize_audio_device().await });
 
     list_host_output_devices();
 
@@ -220,15 +228,19 @@ async fn main() -> ExitCode {
 
     // Parse path to WAV file from CLI
     let cli: Cli = Cli::parse();
+    let audio_file: PathBuf = cli.audio_file.unwrap();
+    let binding = audio_file.clone();
+    let branches = run_playback_and_vis(binding.as_ref()).await;
+    // let branches = run_playback_and_vis(audio_file.clone().as_ref())
+    // if cli.playback {
+    //     let audio_file: PathBuf = cli.audio_file.unwrap();
+    //     let buf = audio_file.to_path_buf();
+    //     let (signal, n_samples) = read_wave(buf); // Read WAV file to (Vector of audio signal, Length of audio signal)
 
-    if cli.playback {
-        let audio_file: PathBuf = cli.audio_file.unwrap();
-        let buf = audio_file.to_path_buf();
-        let (signal, n_samples) = read_wave(buf); // Read WAV file to (Vector of audio signal, Length of audio signal)
-
-        tokio::spawn(async move { playback(audio_file.clone().as_ref()).await });
-        let spectrum = process_wave(signal, n_samples);
-    }
+    //     // tokio::spawn(async move { playback(audio_file.clone().as_ref()).await });
+    //     let spectrum = process_wave(signal, n_samples);
+    //     let branches = run_playback_and_vis(audio_file.clone().as_ref())
+    // }
 
     println!("CTEST");
     // process_wave(read_wave(buf));
