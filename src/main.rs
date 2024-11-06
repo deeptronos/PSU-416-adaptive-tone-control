@@ -10,9 +10,11 @@ use std::convert::TryInto;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+use tokio::stream;
 
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::mpsc;
 
 use audio_visualizer::dynamic::live_input::AudioDevAndCfg;
 use audio_visualizer::dynamic::window_top_btm::{open_window_connect_audio, TransformFn};
@@ -188,31 +190,36 @@ fn process_wave(mut signal: Vec<Complex32>, n_samples: usize) -> Option<f32> {
     Some(0f32)
 }
 
-async fn playback(audio_file: &Path) {
-    std::thread::sleep(std::time::Duration::from_secs(5));
-    let (_stream, stream_handle) = OutputStream::try_default().unwrap(); // Output stream handle
-                                                                         // OutputStream::x
-    let file = BufReader::new(File::open(audio_file).unwrap());
+async fn playback(audio_file: &Path, stream_handle: OutputStreamHandle) {
+    // OutputStream::x
+    println!("Attempting to open audio_file {:?}", audio_file);
+    let file = BufReader::new(File::open(audio_file).expect("Unable to open file"));
     let source = Decoder::new(file).unwrap();
-    stream_handle
-        .play_raw(source.convert_samples())
-        .expect("Unable to play_raw");
 
-    std::thread::sleep(std::time::Duration::from_secs(5));
+    tokio::task::spawn_blocking(move || {
+        stream_handle
+            .play_raw(source.convert_samples())
+            .expect("Unable to play_raw");
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    })
+    .await
+    .expect("Error with playback thread")
+    // .unwrap()
+    // std::thread::sleep(std::time::Duration::from_secs(5));
 }
 
-async fn run_playback_and_vis(audio_file: &Path) {
-    tokio::select! {
-        _ = async {playback(audio_file).await}=> {
-            println!("Playback finished");
-        }
+// async fn run_playback_and_vis(audio_file: &Path) {
+//     tokio::select! {
+//         _ = async {playback(audio_file).await}=> {
+//             println!("Playback finished");
+//         }
 
-        _ =  {visualize_audio_device()} => {
-            println!("Visualization finished");
-        }
+//         _ =  {visualize_audio_device()} => {
+//             println!("Visualization finished");
+//         }
 
-    }
-}
+//     }
+// }
 #[tokio::main]
 async fn main() -> ExitCode {
     // (tx, rx) = watch::channel(config.clone());
@@ -228,9 +235,31 @@ async fn main() -> ExitCode {
 
     // Parse path to WAV file from CLI
     let cli: Cli = Cli::parse();
-    let audio_file: PathBuf = cli.audio_file.unwrap();
-    let binding = audio_file.clone();
-    let branches = run_playback_and_vis(binding.as_ref()).await;
+    // let audio_file: PathBuf = cli.audio_file.unwrap();
+    let binding = cli.audio_file.clone();
+    // let branches = run_playback_and_vis(binding.as_ref()).await;
+    tokio::spawn(async move {
+        visualize_audio_device().await;
+    });
+
+    if let Some(binding) = binding {
+        tokio::spawn(async move {
+            // let (_stream, stream_handle) = OutputStream::try_default().unwrap(); // Output stream handle
+            playback(&binding, stream_handle).await;
+        });
+    }
+    // tokio::spawn(async move {
+    //     if let Some(binding) = binding {
+    //         playback(&binding).await
+    //     }
+    // });
+
+    // Keep the main task running indefinitely
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {
+            println!("Ctrl+C received, exiting...");
+        }
+    }
     // let branches = run_playback_and_vis(audio_file.clone().as_ref())
     // if cli.playback {
     //     let audio_file: PathBuf = cli.audio_file.unwrap();
